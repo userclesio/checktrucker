@@ -1,21 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readDB, writeDB } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 
 export async function GET() {
-  const db = readDB()
-  return NextResponse.json(db.settings)
+  const settings = await prisma.settings.upsert({
+    where: { id: 1 },
+    update: {},
+    create: { id: 1, pixelId: '', fbToken: '' },
+  })
+  return NextResponse.json(settings)
 }
 
 export async function PUT(request: NextRequest) {
   const body = await request.json()
-  const db = readDB()
 
-  db.settings = {
-    pixelId: body.pixelId ?? db.settings.pixelId,
-    fbToken: body.fbToken ?? db.settings.fbToken,
-  }
+  const settings = await prisma.settings.upsert({
+    where: { id: 1 },
+    update: {
+      pixelId: body.pixelId ?? '',
+      fbToken: body.fbToken ?? '',
+    },
+    create: { id: 1, pixelId: body.pixelId ?? '', fbToken: body.fbToken ?? '' },
+  })
 
-  writeDB(db)
-
-  return NextResponse.json(db.settings)
+  return NextResponse.json(settings)
 }

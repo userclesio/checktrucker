@@ -20,7 +20,7 @@ const EVENT_LABEL: Record<string, string> = {
   Purchase: 'Purchase',
 }
 
-function formatTime(ts: string) {
+function formatTime(ts: string | Date) {
   const d = new Date(ts)
   return d.toLocaleString('en-US', {
     month: 'short',

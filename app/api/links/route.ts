@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readDB, writeDB } from '@/lib/db'
-import { generateSlug, generateId } from '@/lib/slugify'
+import { prisma } from '@/lib/prisma'
+import { generateSlug } from '@/lib/slugify'
 
 export async function GET() {
-  const db = readDB()
-  return NextResponse.json(db.links)
+  const links = await prisma.link.findMany({
+    orderBy: { createdAt: 'desc' },
+  })
+  return NextResponse.json(links)
 }
 
 export async function POST(request: NextRequest) {
@@ -14,22 +16,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'name and url are required' }, { status: 400 })
   }
 
-  const db = readDB()
+  const link = await prisma.link.create({
+    data: {
+      slug: generateSlug(),
+      name: body.name as string,
+      url: body.url as string,
+      pixelId: body.pixelId || null,
+      fbToken: body.fbToken || null,
+      value: parseFloat(body.value) || 0,
+      currency: body.currency || 'BRL',
+    },
+  })
 
-  const newLink = {
-    id: generateId(),
-    slug: generateSlug(),
-    name: body.name as string,
-    url: body.url as string,
-    pixelId: body.pixelId || undefined,
-    fbToken: body.fbToken || undefined,
-    value: parseFloat(body.value) || 0,
-    currency: body.currency || 'BRL',
-    createdAt: new Date().toISOString(),
-  }
-
-  db.links.push(newLink)
-  writeDB(db)
-
-  return NextResponse.json(newLink, { status: 201 })
+  return NextResponse.json(link, { status: 201 })
 }
