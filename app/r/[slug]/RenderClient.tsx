@@ -17,6 +17,25 @@ interface RenderClientProps {
   }
 }
 
+// localStorage keys — one per link per event type
+function lsKey(linkId: string, type: string) {
+  return `ct_${type}_${linkId}`
+}
+
+function alreadyFired(linkId: string, type: string): boolean {
+  try {
+    return localStorage.getItem(lsKey(linkId, type)) === '1'
+  } catch {
+    return false
+  }
+}
+
+function markFired(linkId: string, type: string) {
+  try {
+    localStorage.setItem(lsKey(linkId, type), '1')
+  } catch {}
+}
+
 export default function RenderClient({ link, globalSettings }: RenderClientProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const purchaseFired = useRef(false)
@@ -27,8 +46,10 @@ export default function RenderClient({ link, globalSettings }: RenderClientProps
   const effectivePixelId = link.pixelId || globalSettings.pixelId
   const effectiveFbToken = link.fbToken || globalSettings.fbToken
 
-  // Fire-and-forget event logger
+  // Fire-and-forget event logger — skips if device already sent this event
   function logEvent(type: string, source?: string) {
+    if (alreadyFired(link.id, type)) return
+    markFired(link.id, type)
     fetch('/api/events', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -58,12 +79,13 @@ export default function RenderClient({ link, globalSettings }: RenderClientProps
   function firePurchase(source: string) {
     if (purchaseFired.current) return
     purchaseFired.current = true
+    // Purchase fires every real conversion — no dedup here
+    // (a device can buy more than once, just not in the same session)
     fbTrack('Purchase', { value: link.value, currency: link.currency })
     logEvent('Purchase', source)
   }
 
   useEffect(() => {
-    // Remove body margin/padding so iframe fills the screen
     document.body.style.margin = '0'
     document.body.style.padding = '0'
     document.body.style.overflow = 'hidden'
@@ -83,7 +105,6 @@ export default function RenderClient({ link, globalSettings }: RenderClientProps
     // Strategy C: URL param check — immediate purchase fire
     const params = new URLSearchParams(window.location.search)
     if (params.get('purchase') === '1' || params.get('order') === 'success') {
-      // Pixel init first, then purchase
       setTimeout(() => firePurchase('url-param'), 300)
     }
 
@@ -99,7 +120,6 @@ export default function RenderClient({ link, globalSettings }: RenderClientProps
 
     // Initialize Facebook Pixel
     if (effectivePixelId) {
-      // Inject fbq stub
       const w = window as any
       if (!w.fbq) {
         const n = function (...args: unknown[]) {
@@ -115,33 +135,31 @@ export default function RenderClient({ link, globalSettings }: RenderClientProps
         w._fbq = n
       }
 
-      // Load fbevents.js
       if (!document.querySelector('script[src*="fbevents"]')) {
         const script = document.createElement('script')
         script.async = true
         script.src = 'https://connect.facebook.net/en_US/fbevents.js'
         script.onload = () => {
           ;(window as any).fbq('init', effectivePixelId)
-          ;(window as any).fbq('track', 'PageView')
+          // Only fire browser PageView if device hasn't fired it yet
+          if (!alreadyFired(link.id, 'PageView')) {
+            ;(window as any).fbq('track', 'PageView')
+          }
         }
         document.head.appendChild(script)
-      } else {
-        if (typeof (window as any).fbq === 'function') {
-          ;(window as any).fbq('init', effectivePixelId)
-          ;(window as any).fbq('track', 'PageView')
-        }
       }
     }
 
-    // Log PageView to DB
+    // PageView — only if not already fired on this device
     logEvent('PageView', 'direct')
 
-    // Fire InitiateCheckout
+    // InitiateCheckout — only if not already fired on this device
     if (!checkoutFired.current) {
       checkoutFired.current = true
-      // Short delay to let fbq load
       setTimeout(() => {
-        fbTrack('InitiateCheckout', { value: link.value, currency: link.currency })
+        if (!alreadyFired(link.id, 'InitiateCheckout')) {
+          fbTrack('InitiateCheckout', { value: link.value, currency: link.currency })
+        }
         logEvent('InitiateCheckout', 'direct')
       }, 500)
     }
@@ -160,13 +178,10 @@ export default function RenderClient({ link, globalSettings }: RenderClientProps
     }
   }
 
-  // Detect iframe block via error + timeout heuristic
+  // Detect iframe block via timeout heuristic
   useEffect(() => {
     const timer = setTimeout(() => {
-      // If the iframe didn't load at all after 8s, show fallback hint
-      if (iframeLoadCount.current === 0) {
-        setIframeError(true)
-      }
+      if (iframeLoadCount.current === 0) setIframeError(true)
     }, 8000)
     return () => clearTimeout(timer)
   }, [])
@@ -184,19 +199,13 @@ export default function RenderClient({ link, globalSettings }: RenderClientProps
       <iframe
         ref={iframeRef}
         src={link.url}
-        style={{
-          width: '100%',
-          height: '100%',
-          border: 'none',
-          display: 'block',
-        }}
+        style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
         onLoad={handleIframeLoad}
         allow="payment *; fullscreen *; camera *; microphone *; geolocation *"
         sandbox="allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-top-navigation allow-downloads"
         title="Checkout"
       />
 
-      {/* Fallback: shown if iframe is blocked or slow */}
       {iframeError && (
         <div
           style={{
@@ -232,7 +241,6 @@ export default function RenderClient({ link, globalSettings }: RenderClientProps
         </div>
       )}
 
-      {/* Subtle "open directly" escape hatch — always visible */}
       {!iframeError && (
         <a
           href={link.url}
@@ -250,7 +258,6 @@ export default function RenderClient({ link, globalSettings }: RenderClientProps
             textDecoration: 'none',
             backdropFilter: 'blur(4px)',
             border: '1px solid rgba(255,255,255,0.06)',
-            transition: 'color 0.2s',
           }}
           title="Open checkout directly"
         >
