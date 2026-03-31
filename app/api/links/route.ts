@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { generateSlug } from '@/lib/slugify'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET() {
   const links = await prisma.link.findMany({
     orderBy: { createdAt: 'desc' },

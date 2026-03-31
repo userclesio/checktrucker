@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { sendFBConversion } from '@/lib/pixel'
 
+export const dynamic = 'force-dynamic'
+
 export async function POST(request: NextRequest) {
   const body = await request.json()
   const { pixelId, fbToken, eventName, eventData } = body
