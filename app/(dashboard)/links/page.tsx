@@ -198,7 +198,7 @@ export default function LinksPage() {
         onClose={closeModal}
         title={editingLink ? 'Edit Link' : 'Add Checkout Link'}
       >
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           <div>
             <label className={labelClass}>Name</label>
             <input
@@ -213,7 +213,7 @@ export default function LinksPage() {
             <label className={labelClass}>Checkout URL</label>
             <input
               className={inputClass}
-              type="url"
+              type="text"
               placeholder="https://checkout.example.com/product"
               value={form.url}
               onChange={(e) => setForm((f) => ({ ...f, url: e.target.value }))}
